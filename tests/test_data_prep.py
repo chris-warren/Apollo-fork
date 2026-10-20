@@ -219,7 +219,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPSTREAM_SHA256 = {
     ("look2hear/datas/musdb_moisesdb_datamodule.py", "compute_mch_rms_dB"): "318b2351e4499dea5d1869f09fa49a116c61d91d20adde431cfe585744c112b2",
     ("look2hear/datas/musdb_moisesdb_datamodule.py", "match2"): "88a65b7c426505493cac30aa9d8a686a8d7ec15a2c72de9a15e3a150e0cecfbf",
-    ("look2hear/datas/musdb_moisesdb_datamodule.py", "codec_simu"): "ac2241ad191eee92fb5c4eb9129edf415ef3dde7f628372041fa563bda2da40c",
+    # exp/codec-alignment: codec_simu cuts the fixed MP3 delay instead of using match2()
+    # (upstream: ac2241ad191eee92fb5c4eb9129edf415ef3dde7f628372041fa563bda2da40c)
+    ("look2hear/datas/musdb_moisesdb_datamodule.py", "codec_simu"): "477b26c79decb2b0243dae9ed2428bb768071909911eaedfbb0fdb83b23f7969",
     ("look2hear/datas/musdb_moisesdb_datamodule.py", "get_wav_files"): "1f2faa279d99f913faf2b4f907129f8d0e4aab0be15c927b57c5a6099b38597f",
     ("look2hear/datas/musdb_moisesdb_datamodule.py", "MusdbMoisesdbDataset"): "d5a25268dd5cf1eb52090114b5a43cae9c3015ce8896497967c34f5b8a344967",
     ("look2hear/datas/musdb_moisesdb_datamodule.py", "MusdbMoisesdbDataModule"): "f5c988cc232b993e4f33e932ebc338c4a91f145c5b1eba91cb803b5c45b98e5b",
@@ -280,6 +282,12 @@ class ResidualLagTests(unittest.TestCase):
 @unittest.skipIf(codec_simu is None or h5py is None,
                  "released codec needs torch 2.0 + torchaudio 2.0.1 with FFmpeg 4 (see look2hear.yml)")
 class CodecTests(unittest.TestCase):
+    def test_codec_simu_output_is_aligned(self):
+        x = np.random.default_rng(0).normal(0, 0.1, (2, 3 * SR)).astype(np.float32)
+        for kbps in (24, 32, 48, 64, 96, 128):
+            y = codec_simu(torch.from_numpy(x), sr=SR, options={"bitrate": kbps * 1000}).numpy()
+            self.assertEqual(make_eval_set.residual_lag(x, y), 0, f"{kbps} kbit/s")
+
     def test_released_codec_simu_runs(self):
         x = torch.from_numpy(np.random.default_rng(0).normal(0, 0.1, (2, 3 * SR)).astype(np.float32))
         for kbps in (24, 128):

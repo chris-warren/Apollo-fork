@@ -29,6 +29,10 @@ def match2(x, d):
     tau = torch.argmax(tmp.abs(),dim=-1).tolist()
     return tau
 
+# Encoder + decoder delay of the released MP3 path (torchaudio 2.0.1 sox/LAME encode,
+# FFmpeg 4 decode) at 44.1 kHz: 1,105 samples at every bitrate, measured on real clips.
+MP3_DELAY = 1105
+
 def codec_simu(wav, sr=16000, options={'bitrate':'random','compression':'random', 'complexity':'random', 'vbr':'random'}):
 
     if options['bitrate'] == 'random':
@@ -36,12 +40,11 @@ def codec_simu(wav, sr=16000, options={'bitrate':'random','compression':'random'
     compression = int(options['bitrate']//1000)
     param = {'format': "mp3", "compression": compression}
     wav_encdec = apply_codec(wav, sr, **param)
-    if wav_encdec.shape[-1] >= wav.shape[-1]:
-        wav_encdec = wav_encdec[...,:wav.shape[-1]]
-    else:
+    # Experiment (exp/codec-alignment): cut the codec's fixed delay instead of estimating
+    # it with match2(), which left about 7-15% of clips out of step with the target.
+    wav_encdec = wav_encdec[..., MP3_DELAY:MP3_DELAY + wav.shape[-1]]
+    if wav_encdec.shape[-1] < wav.shape[-1]:
         wav_encdec = torch.cat([wav_encdec, wav[..., wav_encdec.shape[-1]:]], -1)
-    tau = match2(wav, wav_encdec) 
-    wav_encdec = torch.roll(wav_encdec, -tau[0], -1)
 
     return wav_encdec
 

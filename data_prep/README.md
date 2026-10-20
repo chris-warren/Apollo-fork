@@ -1,5 +1,14 @@
 # Apollo data preparation (`apollo_v1`)
 
+> **Branch `exp/codec-alignment`.** One change from the baseline (`data-prep-splits`):
+> `codec_simu` cuts the MP3 path's fixed 1,105-sample delay instead of re-aligning with
+> `match2()`, so every training pair is time-aligned (40/40 real clips at each of the six
+> bitrates, versus about 85–93 % with the released code). The MP3 encoder and decoder,
+> the per-worker bitrate behaviour and everything else are unchanged, so a model trained
+> here differs from the baseline only in alignment. Evaluate both on the same
+> `apollo_v1` test set; the `aligned:*` rows of `metrics_breakdown.csv` separate clips
+> that the released codec left misaligned.
+
 This folder (`data_prep/` in the Apollo repo) builds leak-free training data and fixed
 validation/test sets for Apollo from MUSDB18-HQ and MoisesDB. A copy of this file is
 written next to the generated data, with a log of every generation run appended at
