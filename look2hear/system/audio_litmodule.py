@@ -121,7 +121,7 @@ class AudioLightningModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_nb):
         # cal val loss
-        ori_data, codec_data = batch
+        ori_data, codec_data = batch[:2]  # MusdbMoisesdbEval also returns the clip id
         # print(mixtures.shape)
         est_sources = self(codec_data)
         loss = self.metrics(est_sources, ori_data)

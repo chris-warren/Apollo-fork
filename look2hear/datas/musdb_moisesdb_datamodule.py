@@ -132,17 +132,33 @@ class MusdbMoisesdbDataset(Dataset):
     
 
 class MusdbMoisesdbEval(Dataset):
+    """Fixed eval clips: a packed HDF5 file from data_prep/make_eval_set.py (datasets
+    `ori`, `codec`, `clip_id`), or the original layout of one folder per clip holding
+    ori_wav.wav and codec_wav.wav. Both return the same (ori, codec, key) triple."""
     def __init__(
         self,
         data_dir: str
     ) -> None:
+        self.h5_path = data_dir if data_dir.endswith((".hdf5", ".h5")) else None
+        self.h5 = None  # opened lazily so every dataloader worker gets its own handle
+        if self.h5_path:
+            with h5py.File(self.h5_path, "r") as f:
+                self.length = f["ori"].shape[0]
+            return
         self.data_path = os.listdir(data_dir)
         self.data_path = [os.path.join(data_dir, i) for i in self.data_path]
-        
+        self.length = len(self.data_path)
+
     def __len__(self) -> int:
-        return len(self.data_path)
-    
+        return self.length
+
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        if self.h5_path:
+            if self.h5 is None:
+                self.h5 = h5py.File(self.h5_path, "r")
+            clip_id = self.h5["clip_id"][idx]
+            clip_id = clip_id.decode() if isinstance(clip_id, bytes) else str(clip_id)
+            return torch.from_numpy(self.h5["ori"][idx]), torch.from_numpy(self.h5["codec"][idx]), clip_id
         ori_wav = torchaudio.load(self.data_path[idx]+"/ori_wav.wav")[0]
         codec_wav = torchaudio.load(self.data_path[idx]+"/codec_wav.wav")[0]
         
