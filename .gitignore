@@ -6,3 +6,5 @@
 /output.wav
 /apollo_*_smoke.wav
 .env
+# Apptainer images (built by containers/build.sh; gigabytes, never commit)
+*.sif
