@@ -21,6 +21,7 @@ import look2hear.system
 import look2hear.datas
 import look2hear.losses
 from look2hear.utils import RankedLogger, instantiate, print_only
+from dotenv_loader import load_env
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -126,7 +127,18 @@ if __name__ == "__main__":
     )
     
     args = parser.parse_args()
+    # Machine-specific settings (data paths, WANDB_MODE) come from .env; see .env.example.
+    load_env()
     cfg = OmegaConf.load(args.conf_dir)
+    try:
+        # Fill in ${oc.env:...} now, so a missing variable fails here and the saved
+        # config.yaml records the real paths.
+        OmegaConf.resolve(cfg)
+    except Exception as e:
+        raise SystemExit(f"Could not resolve {args.conf_dir}: {e}\nSet the variable in .env (see .env.example).")
+    for key in ("train_dir", "eval_dir"):
+        if not os.path.exists(cfg.datas[key]):
+            raise SystemExit(f"datas.{key} does not exist: {cfg.datas[key]}")
     
     os.makedirs(os.path.join(cfg.exp.dir, cfg.exp.name), exist_ok=True)
     # 保存配置到新的文件

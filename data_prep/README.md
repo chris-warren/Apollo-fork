@@ -15,8 +15,10 @@ upstream or from the released Apollo data code is listed under
 released code differs from the paper, the released code is followed; nothing that
 changes what the model trains on is altered (see [Kept as released](#kept-as-released)).
 `tests/test_data_prep.py::FidelityTests` checks that the training path — data loader,
-MP3 codec, model, losses, discriminator, training step, `train.py` — is byte-identical
-to upstream commit `e84bcac`. Improvements are separate experiments on their own
+MP3 codec, model, losses, discriminator, training step, and `train.py`'s `train()` —
+is byte-identical to upstream commit `e84bcac`. (`train.py`'s startup code additionally
+loads `.env`, resolves the config so the saved `config.yaml` records real paths, and
+checks that the data paths exist.) Improvements are separate experiments on their own
 branches (e.g. `exp/codec-alignment`), measured against this baseline.
 
 ## Commands

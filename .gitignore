@@ -5,3 +5,4 @@
 /smoke_test_output/
 /output.wav
 /apollo_*_smoke.wav
+.env

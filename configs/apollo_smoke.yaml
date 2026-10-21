@@ -1,10 +1,13 @@
 # Smoke test: configs/apollo.yaml with only run-size, device, path and logging
 # settings changed; every model, loss, optimiser and data-augmentation setting is
-# identical. Purpose: catch bugs on one GPU and measure time per step, GPU memory
+# identical. Purpose: catch bugs on one GPU and measure time per sample, GPU memory
 # and validation time before requesting a full run.
 #
-#   export APOLLO_DATA=~/projects/def-<pi>/<user>/data/processed/apollo_v1
-#   export WANDB_MODE=offline   # compute nodes have no internet
+# NOT a faithful training run: one GPU at batch 1 means each optimiser step averages
+# 1 sample, while the paper's 8 GPUs x batch 1 average 8, so the learning dynamics
+# differ. Discard the model; only the timings and memory carry over.
+#
+#   cp .env.example .env   # set APOLLO_DATA (and WANDB_MODE=offline) for this machine
 #   python train.py --conf_dir=configs/apollo_smoke.yaml
 #
 # 300 training steps + 30 validation clips per epoch, 2 epochs: exercises training,

@@ -234,7 +234,9 @@ UPSTREAM_SHA256 = {
     ("look2hear/models/apollo.py", "RMSNorm"): "c4a48a86a1d829fff1e5c569e6e93af7e4f10223024fbb9544ad93e51ed41d0e",
     ("look2hear/losses/gan_losses.py", None): "88637a865b25ae1f9f3a21a9e01a7815be9b97e342491cd7cf1aea730c7a9c1b",
     ("look2hear/discriminators/frequencydis.py", None): "7f0c92a1e312fe91cd0c857efb846e3b3ab4b9b8d106734168e3a03b68ee8e0b",
-    ("train.py", None): "07c739cf12f0039f672917d7f39b3d309a19d6487a44b08baef98f8072147ab0",
+    # train.py's __main__ block also loads .env, resolves the config and checks data
+    # paths (launch plumbing); the training function itself must match upstream.
+    ("train.py", "train"): "5ac4261e35ef34cf227e9e0db1fa5e80ffe48e8f6b66c71ffb1337888f02f6ad",
 }
 
 
@@ -254,6 +256,12 @@ class FidelityTests(unittest.TestCase):
             code = src if name is None else nodes.get(name, "")
             self.assertEqual(hashlib.sha256(code.encode()).hexdigest(), expected,
                              f"{path}:{name or '(whole file)'} differs from upstream e84bcac")
+
+    def test_train_py_loads_env_and_resolves_config(self):
+        with open(os.path.join(REPO, "train.py")) as f:
+            src = f.read()
+        self.assertIn("load_env()", src)
+        self.assertIn("OmegaConf.resolve(cfg)", src)
 
     def test_released_codec_import_kept(self):
         with open(os.path.join(REPO, "look2hear/datas/musdb_moisesdb_datamodule.py")) as f:
