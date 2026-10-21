@@ -1,0 +1,59 @@
+Bootstrap: docker
+From: mambaorg/micromamba:1.5.10
+
+# Training environment for the Apollo baseline: the versions pinned in look2hear.yml.
+#
+# The MP3 augmentation (torchaudio.functional.apply_codec in codec_simu) needs exactly
+# torch 2.0.0 + torchaudio 2.0.1 with FFmpeg 4 shared libraries: torchaudio's bundled
+# sox encodes MP3, but decoding goes through FFmpeg and torchaudio 2.0 loads only
+# FFmpeg 4. Newer torchaudio removed apply_codec. FFmpeg comes from conda-forge
+# (4.2.2, the version in look2hear.yml).
+#
+# Code is not copied in: run it from a git checkout (see containers/README.md).
+# Build without root: apptainer build apollo.sif containers/apollo.def
+
+%environment
+    export PATH=/opt/conda/bin:$PATH
+    # NVRTC (used by cuDNN, and by torch to compile some GPU kernels at run time) looks
+    # for libnvrtc.so and libnvrtc-builtins.so.11.8 on the library path; the torch 2.0.0
+    # cu118 wheel keeps them in torch/lib, which is not on it by default.
+    export LD_LIBRARY_PATH=/opt/conda/lib/python3.10/site-packages/torch/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+    export PYTHONNOUSERSITE=1
+    export PYTHONUNBUFFERED=1
+
+%post
+    export PATH=/opt/conda/bin:$PATH MAMBA_ROOT_PREFIX=/opt/conda PIP_NO_CACHE_DIR=1 PYTHONNOUSERSITE=1
+    micromamba install -y -p /opt/conda -c conda-forge \
+        python=3.10.13 ffmpeg=4.2.2 lame=3.100 pip
+    micromamba clean -afy
+
+    pip install torch==2.0.0 torchaudio==2.0.1 --index-url https://download.pytorch.org/whl/cu118
+    # cuDNN 8 loads NVRTC as plain "libnvrtc.so", but the torch 2.0.0 cu118 wheel ships it
+    # only under a hashed name; without this link (and LD_LIBRARY_PATH in %environment)
+    # the first convolution on a GPU fails with "Could not load library
+    # libcudnn_cnn_infer.so.8 ... libnvrtc.so".
+    TORCH_LIB=$(python -c "import os, torch; print(os.path.join(os.path.dirname(torch.__file__), 'lib'))")
+    ln -s "$(basename "$(ls "$TORCH_LIB"/libnvrtc-*.so.11.2)")" "$TORCH_LIB/libnvrtc.so"
+
+    # Versions from look2hear.yml; wandb is used by train.py but missing from that file.
+    pip install \
+        numpy==1.26.3 scipy==1.14.1 setuptools==66.0.0 \
+        pytorch-lightning==2.2.1 lightning-utilities==0.11.6 torchmetrics==1.4.1 \
+        hydra-core==1.3.2 omegaconf==2.3.0 pyyaml==6.0.2 rich==13.8.0 \
+        h5py==3.11.0 soundfile==0.12.1 librosa==0.10.2.post1 \
+        torch-complex==0.4.4 torch-optimizer==0.3.0 pytorch-ranger==0.1.1 \
+        fast-bss-eval==0.1.4 torch-mir-eval==0.4 \
+        huggingface-hub==0.24.6 wandb
+
+    # ViSQOL (visqol==3.3.3 in look2hear.yml) is not on PyPI and is only needed by test.py
+    # for the final evaluation; it is not installed here. See containers/README.md.
+
+%test
+    export PATH=/opt/conda/bin:$PATH
+    python -c "import torch, torchaudio; assert torch.__version__.startswith('2.0.0') and torchaudio.__version__.startswith('2.0.1')"
+    python -c "import torchaudio; assert torchaudio._extension._FFMPEG_INITIALIZED, 'FFmpeg 4 not found'"
+    python -c "import os, torch; assert os.path.exists(os.path.join(os.path.dirname(torch.__file__), 'lib', 'libnvrtc.so')), 'libnvrtc.so link missing'"
+    case ":$LD_LIBRARY_PATH:" in *"/site-packages/torch/lib:"*) ;; *) echo "torch/lib not on LD_LIBRARY_PATH"; exit 1;; esac
+
+%labels
+    Description Apollo baseline training environment (torch 2.0.0, torchaudio 2.0.1, FFmpeg 4.2.2)
