@@ -1,0 +1,120 @@
+# Smoke test: configs/apollo.yaml with only run-size, device, path and logging
+# settings changed; every model, loss, optimiser and data-augmentation setting is
+# identical. Purpose: catch bugs on one GPU and measure time per step, GPU memory
+# and validation time before requesting a full run.
+#
+#   export APOLLO_DATA=~/projects/def-<pi>/<user>/data/processed/apollo_v1
+#   export WANDB_MODE=offline   # compute nodes have no internet
+#   python train.py --conf_dir=configs/apollo_smoke.yaml
+#
+# 300 training steps + 30 validation clips per epoch, 2 epochs: exercises training,
+# validation, checkpointing, the epoch-end LR scheduler step and the final
+# best_model.pth export. A full epoch is 40,000 samples.
+
+exp: 
+  dir: ./Exps
+  name: Apollo-smoke
+
+# seed: 614020
+
+datas:
+  _target_: look2hear.datas.MusdbMoisesdbDataModule
+  train_dir: ${oc.env:APOLLO_DATA}/hdf5_train
+  eval_dir: ${oc.env:APOLLO_DATA}/eval/val.hdf5
+  codec_type: mp3
+  codec_options:
+    bitrate: random
+    compression: random
+    complexity: random
+    vbr: random
+  sr: 44100
+  segments: 3
+  num_stems: 8
+  snr_range: [-10, 10]
+  num_samples: 40000
+  batch_size: 1
+  num_workers: 8
+
+model:
+  _target_: look2hear.models.apollo.Apollo
+  sr: 44100
+  win: 20 # ms
+  feature_dim: 256
+  layer: 6
+
+discriminator:
+  _target_: look2hear.discriminators.frequencydis.MultiFrequencyDiscriminator
+  nch: 2
+  window: [32, 64, 128, 256, 512, 1024, 2048]
+
+optimizer_g:
+  _target_: torch.optim.AdamW
+  lr: 0.001
+  weight_decay: 0.01
+
+optimizer_d:
+  _target_: torch.optim.AdamW
+  lr: 0.0001
+  weight_decay: 0.01
+  betas: [0.5, 0.99]
+
+scheduler_g:
+  _target_: torch.optim.lr_scheduler.StepLR
+  step_size: 2
+  gamma: 0.98
+
+scheduler_d:
+  _target_: torch.optim.lr_scheduler.StepLR
+  step_size: 2
+  gamma: 0.98
+
+loss_g:
+  _target_: look2hear.losses.gan_losses.MultiFrequencyGenLoss
+  eps: 1e-8
+
+loss_d:
+  _target_: look2hear.losses.gan_losses.MultiFrequencyDisLoss
+  eps: 1e-8
+
+metrics:
+  _target_: look2hear.losses.MultiSrcNegSDR
+  sdr_type: sisdr
+
+system:
+  _target_: look2hear.system.audio_litmodule.AudioLightningModule
+
+early_stopping:
+  _target_: pytorch_lightning.callbacks.EarlyStopping
+  monitor: val_loss
+  patience: 20
+  mode: min
+  verbose: true
+
+checkpoint:
+  _target_: pytorch_lightning.callbacks.ModelCheckpoint
+  dirpath: ${exp.dir}/${exp.name}/checkpoints
+  monitor: val_loss
+  mode: min
+  verbose: true
+  save_top_k: 5
+  save_last: true
+  filename: '{epoch}-{val_loss:.4f}'
+
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  name: ${exp.name}
+  save_dir: ${exp.dir}/${exp.name}/logs
+  offline: true  # smoke test: compute nodes have no internet
+  project: Audio-Restoration
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  devices: [0]  # smoke test: one GPU (paper: 8 GPUs x batch 1)
+  max_epochs: 2  # smoke test (full: 500)
+  sync_batchnorm: true
+  default_root_dir: ${exp.dir}/${exp.name}/
+  accelerator: cuda
+  limit_train_batches: 300  # smoke test (full: 1.0 = 40,000 samples)
+  limit_val_batches: 30  # smoke test (full: all 300 clips)
+  fast_dev_run: false
+  
