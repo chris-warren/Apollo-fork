@@ -21,7 +21,7 @@ import look2hear.system
 import look2hear.datas
 import look2hear.losses
 from look2hear.utils import RankedLogger, instantiate, print_only
-from dotenv_loader import load_env
+from dotenv_loader import configure_attention_backend, load_env
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -129,6 +129,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # Machine-specific settings (data paths, WANDB_MODE) come from .env; see .env.example.
     load_env()
+    configure_attention_backend()
     cfg = OmegaConf.load(args.conf_dir)
     try:
         # Fill in ${oc.env:...} now, so a missing variable fails here and the saved

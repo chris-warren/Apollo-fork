@@ -59,3 +59,28 @@ def load_env(path=None, verbose=True):
         kept = sorted(set(parse_env_file(path)) - set(loaded))
         print(f"Loaded {sorted(loaded)} from {path}" + (f"; kept existing {kept}" if kept else ""))
     return loaded
+
+
+SDPA_BACKENDS = ("default", "math")
+
+
+def configure_attention_backend(verbose=True):
+    """Apply APOLLO_SDPA_BACKEND to torch's scaled_dot_product_attention.
+
+    "default" (or unset) leaves torch's own choice, as in the released code. "math"
+    allows only the plain implementation: torch 2.0's fused "memory-efficient" kernel
+    hits "CUDA error: an illegal instruction" on H100 (sm_90), and FlashAttention does
+    not run in fp32. Same softmax(QK^T/sqrt(d))V in fp32, so results differ only at
+    rounding level.
+    """
+    mode = os.environ.get("APOLLO_SDPA_BACKEND", "default").strip().lower()
+    if mode not in SDPA_BACKENDS:
+        raise ValueError(f"APOLLO_SDPA_BACKEND must be one of {SDPA_BACKENDS}, got {mode!r}")
+    if mode == "math":
+        import torch
+        torch.backends.cuda.enable_flash_sdp(False)
+        torch.backends.cuda.enable_mem_efficient_sdp(False)
+        torch.backends.cuda.enable_math_sdp(True)
+    if verbose:
+        print(f"Attention backend: {mode}")
+    return mode

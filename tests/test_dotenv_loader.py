@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from dotenv_loader import EnvFileError, load_env, parse_env_file
+from dotenv_loader import EnvFileError, configure_attention_backend, load_env, parse_env_file
 
 try:
     from omegaconf import OmegaConf
@@ -63,7 +63,7 @@ class LoadTests(unittest.TestCase):
 
     def test_example_file_parses(self):
         values = parse_env_file(os.path.join(REPO, ".env.example"))
-        self.assertEqual(set(values), {"APOLLO_DATA", "WANDB_MODE"})
+        self.assertEqual(set(values), {"APOLLO_DATA", "WANDB_MODE", "APOLLO_SDPA_BACKEND"})
 
     @unittest.skipIf(OmegaConf is None, "omegaconf not installed")
     def test_smoke_config_resolves_from_env_file(self):
@@ -74,6 +74,37 @@ class LoadTests(unittest.TestCase):
             OmegaConf.resolve(cfg)
             self.assertEqual(cfg.datas.train_dir, f"{d}/apollo_v1/hdf5_train")
             self.assertEqual(cfg.datas.eval_dir, f"{d}/apollo_v1/eval/val.hdf5")
+
+
+class AttentionBackendTests(unittest.TestCase):
+    def setUp(self):
+        import torch
+        self.torch = torch
+        self.saved = (torch.backends.cuda.flash_sdp_enabled(), torch.backends.cuda.mem_efficient_sdp_enabled(),
+                      torch.backends.cuda.math_sdp_enabled())
+
+    def tearDown(self):
+        b = self.torch.backends.cuda
+        b.enable_flash_sdp(self.saved[0]); b.enable_mem_efficient_sdp(self.saved[1]); b.enable_math_sdp(self.saved[2])
+
+    def test_math_disables_fused_kernels(self):
+        with mock.patch.dict(os.environ, {"APOLLO_SDPA_BACKEND": "math"}):
+            self.assertEqual(configure_attention_backend(verbose=False), "math")
+        b = self.torch.backends.cuda
+        self.assertEqual((b.flash_sdp_enabled(), b.mem_efficient_sdp_enabled(), b.math_sdp_enabled()),
+                         (False, False, True))
+
+    def test_default_leaves_torch_choice(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("APOLLO_SDPA_BACKEND", None)
+            self.assertEqual(configure_attention_backend(verbose=False), "default")
+        self.assertEqual((self.torch.backends.cuda.flash_sdp_enabled(),
+                          self.torch.backends.cuda.mem_efficient_sdp_enabled()), self.saved[:2])
+
+    def test_rejects_unknown_value(self):
+        with mock.patch.dict(os.environ, {"APOLLO_SDPA_BACKEND": "flash"}):
+            with self.assertRaises(ValueError):
+                configure_attention_backend(verbose=False)
 
 
 if __name__ == "__main__":

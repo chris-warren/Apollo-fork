@@ -64,8 +64,9 @@ def main():
     @check(".env and config")
     def _():
         from omegaconf import OmegaConf
-        from dotenv_loader import load_env
+        from dotenv_loader import configure_attention_backend, load_env
         load_env(verbose=False)
+        state["sdpa"] = configure_attention_backend(verbose=False)
         cfg = OmegaConf.load(args.config)
         OmegaConf.resolve(cfg)
         for key in ("train_dir", "eval_dir"):
@@ -74,7 +75,8 @@ def main():
         mode = os.environ.get("WANDB_MODE", "online")
         assert mode in ("offline", "disabled") or cfg.logger.get("offline"), \
             "wandb would try to go online; set WANDB_MODE=offline in .env"
-        return f"{os.path.basename(args.config)}, data at {os.environ.get('APOLLO_DATA')}, WANDB_MODE={mode}"
+        return (f"{os.path.basename(args.config)}, data at {os.environ.get('APOLLO_DATA')}, "
+                f"WANDB_MODE={mode}, APOLLO_SDPA_BACKEND={state['sdpa']}")
 
     @check("training data, eval sets and leakage")
     def _():
@@ -116,6 +118,9 @@ def main():
         cap = torch.cuda.get_device_capability(0)
         arch = f"sm_{cap[0]}{cap[1]}"
         assert arch in torch.cuda.get_arch_list(), f"{arch} not in this torch build: {torch.cuda.get_arch_list()}"
+        # torch 2.0's fused memory-efficient attention crashes on Hopper (illegal instruction).
+        assert not (cap[0] >= 9 and torch.backends.cuda.mem_efficient_sdp_enabled()), \
+            f"{arch} GPU: set APOLLO_SDPA_BACKEND=math in .env (see .env.example)"
         cfg = state["cfg"]
         model = hydra.utils.instantiate(cfg.model).cuda()
         disc = hydra.utils.instantiate(cfg.discriminator).cuda()

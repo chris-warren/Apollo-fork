@@ -26,6 +26,7 @@ import look2hear.losses
 import look2hear.models
 from look2hear.metrics import MetricsTracker
 from look2hear.utils import RankedLogger, instantiate, print_only
+from dotenv_loader import configure_attention_backend, load_env
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -127,6 +128,9 @@ if __name__ == "__main__":
                         help="quick run: only the first N clips per dataset and bitrate (0 = all)")
     
     args = parser.parse_args()
+    # Same machine settings as train.py (APOLLO_SDPA_BACKEND must match the training run).
+    load_env()
+    configure_attention_backend()
     cfg = OmegaConf.load(args.conf_dir)
     
     os.makedirs(os.path.join(cfg.exp.dir, cfg.exp.name), exist_ok=True)

@@ -47,6 +47,19 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv -l 5
 `-B /project -B /scratch` makes the project and scratch file systems visible inside the
 container (`~/projects/...` links there); `--nv` exposes the GPU.
 
+## H100s: set APOLLO_SDPA_BACKEND=math
+
+torch 2.0's fused "memory-efficient" attention kernel crashes on H100 (sm_90) with
+`CUDA error: an illegal instruction was encountered` (it can also surface later as
+`cuDNN error: CUDNN_STATUS_EXECUTION_FAILED`). FlashAttention does not run in fp32, so
+on H100s Apollo's attention must use torch's plain math implementation:
+`APOLLO_SDPA_BACKEND=math` in `.env` (the default in `.env.example`). `train.py`,
+`test.py` and `scripts/preflight.py` apply it; the preflight fails on an H100 without it.
+It computes the same `softmax(QK^T/sqrt(d))V` in fp32: on a GPU where both paths run,
+generator outputs differed by 7.7e-7 and gradients by 2.6e-7 (relative). On the
+authors' GPUs (RTX 4090, fp32) torch used the memory-efficient kernel; leave the
+setting at `default` on GPUs where that kernel works.
+
 ## Known gap: ViSQOL (final evaluation only)
 
 `look2hear.yml` lists `visqol==3.3.3`, which is not on PyPI; the authors must have
