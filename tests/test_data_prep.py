@@ -223,7 +223,11 @@ UPSTREAM_SHA256 = {
     ("look2hear/datas/musdb_moisesdb_datamodule.py", "get_wav_files"): "1f2faa279d99f913faf2b4f907129f8d0e4aab0be15c927b57c5a6099b38597f",
     ("look2hear/datas/musdb_moisesdb_datamodule.py", "MusdbMoisesdbDataset"): "d5a25268dd5cf1eb52090114b5a43cae9c3015ce8896497967c34f5b8a344967",
     ("look2hear/datas/musdb_moisesdb_datamodule.py", "MusdbMoisesdbDataModule"): "f5c988cc232b993e4f33e932ebc338c4a91f145c5b1eba91cb803b5c45b98e5b",
-    ("look2hear/system/audio_litmodule.py", "training_step"): "c9e155cca6e27a63e030913eb469b473bc8429578e63ca1dbc7ffabe03784438",
+    # Losses evaluated per sample (per_sample_mean), so k samples per GPU reproduce the
+    # paper's 8 GPUs x batch 1 step; identical to upstream at batch 1. Equivalence is
+    # tested in tests/test_training_equivalence.py.
+    # (upstream: c9e155cca6e27a63e030913eb469b473bc8429578e63ca1dbc7ffabe03784438)
+    ("look2hear/system/audio_litmodule.py", "training_step"): "fe2ebf1254a3a2b8ffe489defa63133eb9c22e9d47cc4675247ef79ec502f72f",
     ("look2hear/system/audio_litmodule.py", "configure_optimizers"): "e99ab35e5b94d852446a668577b8cf29406fbae2181476e9e2313212aca4c12a",
     ("look2hear/system/audio_litmodule.py", "on_validation_epoch_end"): "3d047ce3a0f8f5c4b522f3467b800538e615e8b7146efe83f0970b4c8e5c23d8",
     ("look2hear/models/apollo.py", "Apollo"): "a2b4834527f71cc06191f209293402310e7a4d440b2de2cecca6b32b698db28a",
@@ -234,9 +238,10 @@ UPSTREAM_SHA256 = {
     ("look2hear/models/apollo.py", "RMSNorm"): "c4a48a86a1d829fff1e5c569e6e93af7e4f10223024fbb9544ad93e51ed41d0e",
     ("look2hear/losses/gan_losses.py", None): "88637a865b25ae1f9f3a21a9e01a7815be9b97e342491cd7cf1aea730c7a9c1b",
     ("look2hear/discriminators/frequencydis.py", None): "7f0c92a1e312fe91cd0c857efb846e3b3ab4b9b8d106734168e3a03b68ee8e0b",
-    # train.py's __main__ block also loads .env, resolves the config and checks data
-    # paths (launch plumbing); the training function itself must match upstream.
-    ("train.py", "train"): "5ac4261e35ef34cf227e9e0db1fa5e80ffe48e8f6b66c71ffb1337888f02f6ad",
+    # train.py's __main__ block also loads .env, resolves the config, checks data paths and
+    # handles --resume (launch plumbing). train() only passes ckpt_path to trainer.fit.
+    # (upstream: 5ac4261e35ef34cf227e9e0db1fa5e80ffe48e8f6b66c71ffb1337888f02f6ad)
+    ("train.py", "train"): "40fa0e4999433e7d4597ca0c7b9dfd802aba073f0c8048706062abf6bc85f472",
 }
 
 

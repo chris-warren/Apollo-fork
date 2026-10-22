@@ -8,3 +8,6 @@
 .env
 # Apptainer images (built by containers/build.sh; gigabytes, never commit)
 *.sif
+# Training outputs and Slurm logs (checkpoints are hundreds of MB; never commit)
+/Exps/
+/slurm-logs/

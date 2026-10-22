@@ -35,6 +35,31 @@ def flatten_dict(d, parent_key="", sep="_"):
     return dict(items)
 
 
+def _sample(x, b):
+    """Sample b (kept as a batch of one) of a tensor or nested list of batch-first tensors."""
+    if isinstance(x, torch.Tensor):
+        return x[b:b + 1]
+    return type(x)(_sample(v, b) for v in x)
+
+
+def per_sample_mean(loss_fn, *args):
+    """Mean over the batch of loss_fn applied to each sample on its own.
+
+    The paper trains on 8 GPUs with batch 1 each, so every per-step loss is a mean of
+    8 single-sample losses. MultiFrequencyGenLoss divides batch-wide means (freq_MAE
+    and feature matching), so evaluating it on a batch of 2 is not the mean of two
+    batch-1 losses. Evaluating each sample on its own keeps the paper's maths with more
+    samples per GPU (e.g. 4 GPUs x batch 2). With batch 1 this is exactly the released
+    call.
+    """
+    first = args
+    while not isinstance(first, torch.Tensor):
+        first = first[0]
+    batch = first.shape[0]
+    if batch == 1:
+        return loss_fn(*args)
+    return sum(loss_fn(*_sample(args, b)) for b in range(batch)) / batch
+
 class AudioLightningModule(pl.LightningModule):
     def __init__(
         self,
@@ -82,7 +107,8 @@ class AudioLightningModule(pl.LightningModule):
         est_outputs, _ = self.discriminator(output.detach(), sample_rate=44100)
         target_outputs, _ = self.discriminator(ori_data, sample_rate=44100)
         
-        loss_d = self.loss_func["d"](target_outputs, est_outputs)
+        # Losses per sample, then averaged: the paper's 8 GPUs x batch 1 maths at any batch size.
+        loss_d = per_sample_mean(self.loss_func["d"], target_outputs, est_outputs)
         self.manual_backward(loss_d)
         self.clip_gradients(optimizer_d, gradient_clip_val=5, gradient_clip_algorithm="norm")
         optimizer_d.step()
@@ -90,7 +116,7 @@ class AudioLightningModule(pl.LightningModule):
         est_outputs, est_feature_maps = self.discriminator(output, sample_rate=44100)
         _, targets_feature_maps = self.discriminator(ori_data, sample_rate=44100)
         
-        loss_g = self.loss_func["g"](est_outputs, est_feature_maps, targets_feature_maps, output, ori_data)
+        loss_g = per_sample_mean(self.loss_func["g"], est_outputs, est_feature_maps, targets_feature_maps, output, ori_data)
         self.manual_backward(loss_g)
         self.clip_gradients(optimizer_g, gradient_clip_val=5, gradient_clip_algorithm="norm")
         optimizer_g.step()

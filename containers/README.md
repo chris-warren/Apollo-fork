@@ -47,6 +47,28 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv -l 5
 `-B /project -B /scratch` makes the project and scratch file systems visible inside the
 container (`~/projects/...` links there); `--nv` exposes the GPU.
 
+## 4. Full run: one node, 4 x H100
+
+`configs/apollo_1node.yaml` = `configs/apollo.yaml` with 4 GPUs x batch 2 = 8 samples per
+optimiser step (the paper: 8 GPUs x batch 1). `training_step` evaluates the GAN losses
+per sample, so this is the paper's step exactly (`tests/test_training_equivalence.py`).
+From the smoke test: about 46 min and 3.1 GPU-hours per epoch.
+
+```bash
+# from the repository root, on a login node
+bash scripts/submit_train.sh configs/apollo_1node_test.yaml --time=0:45:00   # ~15 min test first
+bash scripts/submit_train.sh configs/apollo_1node.yaml --chain 4             # then the run
+squeue -u $USER;  tail -f slurm-logs/apollo-1node-<jobid>.out
+```
+
+Every job starts with `train.py --resume auto`: it continues from the run's
+`Exps/<name>/checkpoints/last.ckpt` if there is one, so `--chain N` (N jobs of 3 days,
+each starting when the previous ends) carries a run past the job time limit; a job that
+stops mid-epoch loses only that epoch. Cancel leftover chained jobs (`scancel`) once early
+stopping has ended training. To rerun the test from scratch, delete
+`Exps/Apollo-1node-test` first. The test config's profiler report (end of its log) shows
+how much time training spent waiting for data.
+
 ## H100s: set APOLLO_SDPA_BACKEND=math
 
 torch 2.0's fused "memory-efficient" attention kernel crashes on H100 (sm_90) with

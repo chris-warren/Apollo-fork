@@ -1,0 +1,115 @@
+# Short test of the full-run setup (configs/apollo_1node.yaml) before committing GPU-days:
+# same 4 x H100, batch 2, DDP; 200 steps + 30 validation batches per GPU, 2 epochs, with
+# Lightning's simple profiler (its report at the end shows how long training waited
+# for data). Checks multi-GPU startup, DDP, validation, checkpointing and resume.
+#
+#   bash scripts/submit_train.sh configs/apollo_1node_test.yaml --time=0:45:00
+
+exp: 
+  dir: ./Exps
+  name: Apollo-1node-test
+
+# seed: 614020
+
+datas:
+  _target_: look2hear.datas.MusdbMoisesdbDataModule
+  train_dir: ${oc.env:APOLLO_DATA}/hdf5_train
+  eval_dir: ${oc.env:APOLLO_DATA}/eval/val.hdf5
+  codec_type: mp3
+  codec_options:
+    bitrate: random
+    compression: random
+    complexity: random
+    vbr: random
+  sr: 44100
+  segments: 3
+  num_stems: 8
+  snr_range: [-10, 10]
+  num_samples: 40000
+  batch_size: 2  # per GPU; x 4 GPUs = 8 per step (paper: 8 GPUs x 1)
+  num_workers: 8
+
+model:
+  _target_: look2hear.models.apollo.Apollo
+  sr: 44100
+  win: 20 # ms
+  feature_dim: 256
+  layer: 6
+
+discriminator:
+  _target_: look2hear.discriminators.frequencydis.MultiFrequencyDiscriminator
+  nch: 2
+  window: [32, 64, 128, 256, 512, 1024, 2048]
+
+optimizer_g:
+  _target_: torch.optim.AdamW
+  lr: 0.001
+  weight_decay: 0.01
+
+optimizer_d:
+  _target_: torch.optim.AdamW
+  lr: 0.0001
+  weight_decay: 0.01
+  betas: [0.5, 0.99]
+
+scheduler_g:
+  _target_: torch.optim.lr_scheduler.StepLR
+  step_size: 2
+  gamma: 0.98
+
+scheduler_d:
+  _target_: torch.optim.lr_scheduler.StepLR
+  step_size: 2
+  gamma: 0.98
+
+loss_g:
+  _target_: look2hear.losses.gan_losses.MultiFrequencyGenLoss
+  eps: 1e-8
+
+loss_d:
+  _target_: look2hear.losses.gan_losses.MultiFrequencyDisLoss
+  eps: 1e-8
+
+metrics:
+  _target_: look2hear.losses.MultiSrcNegSDR
+  sdr_type: sisdr
+
+system:
+  _target_: look2hear.system.audio_litmodule.AudioLightningModule
+
+early_stopping:
+  _target_: pytorch_lightning.callbacks.EarlyStopping
+  monitor: val_loss
+  patience: 20
+  mode: min
+  verbose: true
+
+checkpoint:
+  _target_: pytorch_lightning.callbacks.ModelCheckpoint
+  dirpath: ${exp.dir}/${exp.name}/checkpoints
+  monitor: val_loss
+  mode: min
+  verbose: true
+  save_top_k: 5
+  save_last: true
+  filename: '{epoch}-{val_loss:.4f}'
+
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  name: ${exp.name}
+  save_dir: ${exp.dir}/${exp.name}/logs
+  offline: true  # compute nodes have no internet; `wandb sync` afterwards
+  project: Audio-Restoration
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  devices: [0,1,2,3]  # one node of 4 H100 (paper: 8 GPUs)
+  max_epochs: 2  # test (full: 500)
+  sync_batchnorm: true
+  default_root_dir: ${exp.dir}/${exp.name}/
+  accelerator: cuda
+  limit_train_batches: 200  # test (full: 1.0)
+  limit_val_batches: 30  # test, per GPU (full: all)
+  profiler: simple  # test only
+  fast_dev_run: false
+  

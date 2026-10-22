@@ -1,0 +1,118 @@
+# Full baseline run on ONE node: 4 x H100, batch 2 per GPU = 8 samples per optimiser
+# step, the paper's effective batch (8 GPUs x batch 1). training_step evaluates the
+# GAN losses per sample, so this step equals the paper's (tests/test_training_
+# equivalence.py). An epoch is still 40,000 samples = 5,000 optimiser steps.
+# Everything else is configs/apollo.yaml unchanged.
+#
+# Measured (smoke test, 1 H100): 0.277 s/sample at batch 2, 54.6 GB peak memory.
+# Expected: about 46 min per epoch, about 3.1 GPU-hours per epoch.
+#
+# Launch: bash scripts/submit_train.sh (see containers/README.md). Needs .env with
+# APOLLO_DATA, WANDB_MODE=offline and APOLLO_SDPA_BACKEND=math (H100).
+
+exp: 
+  dir: ./Exps
+  name: Apollo-1node-4xH100
+
+# seed: 614020
+
+datas:
+  _target_: look2hear.datas.MusdbMoisesdbDataModule
+  train_dir: ${oc.env:APOLLO_DATA}/hdf5_train
+  eval_dir: ${oc.env:APOLLO_DATA}/eval/val.hdf5
+  codec_type: mp3
+  codec_options:
+    bitrate: random
+    compression: random
+    complexity: random
+    vbr: random
+  sr: 44100
+  segments: 3
+  num_stems: 8
+  snr_range: [-10, 10]
+  num_samples: 40000
+  batch_size: 2  # per GPU; x 4 GPUs = 8 per step (paper: 8 GPUs x 1)
+  num_workers: 8
+
+model:
+  _target_: look2hear.models.apollo.Apollo
+  sr: 44100
+  win: 20 # ms
+  feature_dim: 256
+  layer: 6
+
+discriminator:
+  _target_: look2hear.discriminators.frequencydis.MultiFrequencyDiscriminator
+  nch: 2
+  window: [32, 64, 128, 256, 512, 1024, 2048]
+
+optimizer_g:
+  _target_: torch.optim.AdamW
+  lr: 0.001
+  weight_decay: 0.01
+
+optimizer_d:
+  _target_: torch.optim.AdamW
+  lr: 0.0001
+  weight_decay: 0.01
+  betas: [0.5, 0.99]
+
+scheduler_g:
+  _target_: torch.optim.lr_scheduler.StepLR
+  step_size: 2
+  gamma: 0.98
+
+scheduler_d:
+  _target_: torch.optim.lr_scheduler.StepLR
+  step_size: 2
+  gamma: 0.98
+
+loss_g:
+  _target_: look2hear.losses.gan_losses.MultiFrequencyGenLoss
+  eps: 1e-8
+
+loss_d:
+  _target_: look2hear.losses.gan_losses.MultiFrequencyDisLoss
+  eps: 1e-8
+
+metrics:
+  _target_: look2hear.losses.MultiSrcNegSDR
+  sdr_type: sisdr
+
+system:
+  _target_: look2hear.system.audio_litmodule.AudioLightningModule
+
+early_stopping:
+  _target_: pytorch_lightning.callbacks.EarlyStopping
+  monitor: val_loss
+  patience: 20
+  mode: min
+  verbose: true
+
+checkpoint:
+  _target_: pytorch_lightning.callbacks.ModelCheckpoint
+  dirpath: ${exp.dir}/${exp.name}/checkpoints
+  monitor: val_loss
+  mode: min
+  verbose: true
+  save_top_k: 5
+  save_last: true
+  filename: '{epoch}-{val_loss:.4f}'
+
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  name: ${exp.name}
+  save_dir: ${exp.dir}/${exp.name}/logs
+  offline: true  # compute nodes have no internet; `wandb sync` afterwards
+  project: Audio-Restoration
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  devices: [0,1,2,3]  # one node of 4 H100 (paper: 8 GPUs)
+  max_epochs: 500
+  sync_batchnorm: true
+  default_root_dir: ${exp.dir}/${exp.name}/
+  accelerator: cuda
+  limit_train_batches: 1.0
+  fast_dev_run: false
+  

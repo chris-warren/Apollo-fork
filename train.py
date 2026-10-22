@@ -27,7 +27,7 @@ warnings.filterwarnings("ignore")
 
 
 
-def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def train(cfg: DictConfig, ckpt_path: Optional[str] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     if cfg.get("seed"):
         pl.seed_everything(cfg.seed, workers=True)
     
@@ -100,7 +100,8 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         strategy=DDPStrategy(find_unused_parameters=True),
     )
     
-    trainer.fit(system, datamodule=datamodule)
+    # ckpt_path resumes a run (weights, optimisers, schedulers, epoch, callbacks).
+    trainer.fit(system, datamodule=datamodule, ckpt_path=ckpt_path)
     print_only("Training finished!")
     best_k = {k: v.item() for k, v in checkpoint.best_k_models.items()}
     with open(os.path.join(cfg.exp.dir, cfg.exp.name, "best_k_models.json"), "w") as f:
@@ -125,6 +126,13 @@ if __name__ == "__main__":
         default="local/conf.yml",
         help="Full path to save best validation model",
     )
+    parser.add_argument(
+        "--resume",
+        choices=["never", "auto"],
+        default="never",
+        help="auto: continue from <exp.dir>/<exp.name>/checkpoints/last.ckpt if it exists "
+        "(so the same job can be resubmitted), otherwise start fresh",
+    )
     
     args = parser.parse_args()
     # Machine-specific settings (data paths, WANDB_MODE) come from .env; see .env.example.
@@ -145,5 +153,11 @@ if __name__ == "__main__":
     # 保存配置到新的文件
     OmegaConf.save(cfg, os.path.join(cfg.exp.dir, cfg.exp.name, "config.yaml"))
     
-    train(cfg)
+    ckpt_path = None
+    if args.resume == "auto":
+        last = os.path.join(cfg.exp.dir, cfg.exp.name, "checkpoints", "last.ckpt")
+        if os.path.exists(last):
+            ckpt_path = last
+        print_only(f"Resume: {ckpt_path or 'no last.ckpt yet, starting fresh'}")
+    train(cfg, ckpt_path)
     
