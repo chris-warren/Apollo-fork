@@ -8,6 +8,7 @@
 .env
 # Apptainer images (built by containers/build.sh; gigabytes, never commit)
 *.sif
-# Training outputs and Slurm logs (checkpoints are hundreds of MB; never commit)
+# Run outputs: training runs, Slurm logs, manual logs (checkpoints are hundreds of MB;
+# never commit). Exps/ is the upstream config's output folder.
+/outputs/
 /Exps/
-/slurm-logs/

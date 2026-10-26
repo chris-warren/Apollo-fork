@@ -239,9 +239,10 @@ UPSTREAM_SHA256 = {
     ("look2hear/losses/gan_losses.py", None): "88637a865b25ae1f9f3a21a9e01a7815be9b97e342491cd7cf1aea730c7a9c1b",
     ("look2hear/discriminators/frequencydis.py", None): "7f0c92a1e312fe91cd0c857efb846e3b3ab4b9b8d106734168e3a03b68ee8e0b",
     # train.py's __main__ block also loads .env, resolves the config, checks data paths and
-    # handles --resume (launch plumbing). train() only passes ckpt_path to trainer.fit.
+    # handles --resume (launch plumbing). train() passes ckpt_path to trainer.fit and lets
+    # only DDP rank 0 write best_k_models.json / best_model.pth.
     # (upstream: 5ac4261e35ef34cf227e9e0db1fa5e80ffe48e8f6b66c71ffb1337888f02f6ad)
-    ("train.py", "train"): "40fa0e4999433e7d4597ca0c7b9dfd802aba073f0c8048706062abf6bc85f472",
+    ("train.py", "train"): "7d1239fd52f511dcc69083846e14214211847364a53048dc54a4c8afd0e965c7",
 }
 
 

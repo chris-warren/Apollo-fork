@@ -11,7 +11,7 @@
 # APOLLO_DATA, WANDB_MODE=offline and APOLLO_SDPA_BACKEND=math (H100).
 
 exp: 
-  dir: ./Exps
+  dir: ./outputs/exps  # gitignored; upstream: ./Exps
   name: Apollo-1node-4xH100
 
 # seed: 614020

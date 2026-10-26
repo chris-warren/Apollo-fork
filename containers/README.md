@@ -27,7 +27,7 @@ way the result is the same image. Temporary files go to `$SCRATCH` and are delet
 ```bash
 cp .env.example .env     # set APOLLO_DATA to your apollo_v1 folder; keep WANDB_MODE=offline
 SIF=~/projects/def-<pi>/<user>/containers/apollo.sif
-apptainer exec -B /project -B /scratch $SIF python scripts/preflight.py
+apptainer exec $SIF python scripts/preflight.py
 ```
 
 Every check should pass; the GPU check just reports that no GPU is visible on a login
@@ -35,17 +35,24 @@ node. Fix any FAIL before requesting a GPU (`PREFLIGHT_TRACEBACK=1` shows detail
 
 ## 3. Smoke test (inside the allocation)
 
+Everything a run produces goes in the gitignored `outputs/` folder of the repo:
+`outputs/exps/<exp.name>/` (training runs), `outputs/slurm/` (batch-job logs) and
+`outputs/manual/<date>_<label>/` (anything run by hand, like this).
+
 ```bash
-salloc --account=def-<pi> --gpus-per-node=h100:1 --cpus-per-task=12 --mem=64G --time=1:30:00
-cd ~/projects/def-<pi>/<user>/Apollo-fork
-apptainer exec --nv -B /project -B /scratch $SIF python scripts/preflight.py   # now incl. GPU
-apptainer exec --nv -B /project -B /scratch $SIF python train.py --conf_dir configs/apollo_smoke.yaml
-# second shell on the same node:
-nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv -l 5
+salloc --account=def-gtzan_gpu --gpus-per-node=h100:1 --cpus-per-task=12 --mem=64G --time=1:00:00
+module load apptainer
+cd ~/Apollo-fork
+OUT=outputs/manual/$(date +%F)_smoke_1xh100 && mkdir -p $OUT
+apptainer exec --nv $SIF python scripts/preflight.py 2>&1 | tee $OUT/preflight.log   # 6/6 incl. GPU
+apptainer exec --nv $SIF python train.py --conf_dir configs/apollo_smoke.yaml 2>&1 | tee $OUT/train.log
+# second shell on the same node (srun --jobid=<id> --overlap --pty bash), from ~/Apollo-fork:
+nvidia-smi --query-gpu=timestamp,utilization.gpu,memory.used --format=csv -l 5 | tee $OUT/gpu.csv
 ```
 
-`-B /project -B /scratch` makes the project and scratch file systems visible inside the
-container (`~/projects/...` links there); `--nv` exposes the GPU.
+On DRAC `/scratch` is bound into containers automatically and your home directory is
+always visible; add `-B <dir>` only for data or code on another file system. `--nv`
+exposes the GPU.
 
 ## 4. Full run: one node, 4 x H100
 
@@ -56,18 +63,20 @@ From the smoke test: about 46 min and 3.1 GPU-hours per epoch.
 
 ```bash
 # from the repository root, on a login node
-bash scripts/submit_train.sh configs/apollo_1node_test.yaml --time=0:45:00   # ~15 min test first
+bash scripts/submit_train.sh configs/apollo_1node_test.yaml --time=0:30:00   # ~10 min test first
 bash scripts/submit_train.sh configs/apollo_1node.yaml --chain 4             # then the run
-squeue -u $USER;  tail -f slurm-logs/apollo-1node-<jobid>.out
+squeue -u $USER;  tail -f outputs/slurm/apollo-1node-<jobid>.out
 ```
 
 Every job starts with `train.py --resume auto`: it continues from the run's
-`Exps/<name>/checkpoints/last.ckpt` if there is one, so `--chain N` (N jobs of 3 days,
+`outputs/exps/<name>/checkpoints/last.ckpt` if there is one, so `--chain N` (N jobs of 3 days,
 each starting when the previous ends) carries a run past the job time limit; a job that
 stops mid-epoch loses only that epoch. Cancel leftover chained jobs (`scancel`) once early
 stopping has ended training. To rerun the test from scratch, delete
-`Exps/Apollo-1node-test` first. The test config's profiler report (end of its log) shows
-how much time training spent waiting for data.
+`outputs/exps/Apollo-1node-test` first. Each job also logs GPU utilisation and memory
+every 10 s to `outputs/slurm/apollo-1node-<jobid>-gpu.csv`. The test config writes a
+profiler report per GPU process to `outputs/exps/Apollo-1node-test/` showing how much
+time training spent waiting for data (`train_dataloader_next`).
 
 ## H100s: set APOLLO_SDPA_BACKEND=math
 

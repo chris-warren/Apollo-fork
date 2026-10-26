@@ -3,10 +3,10 @@
 # Lightning's simple profiler (its report at the end shows how long training waited
 # for data). Checks multi-GPU startup, DDP, validation, checkpointing and resume.
 #
-#   bash scripts/submit_train.sh configs/apollo_1node_test.yaml --time=0:45:00
+#   bash scripts/submit_train.sh configs/apollo_1node_test.yaml --time=0:30:00
 
 exp: 
-  dir: ./Exps
+  dir: ./outputs/exps  # gitignored; upstream: ./Exps
   name: Apollo-1node-test
 
 # seed: 614020
@@ -110,6 +110,9 @@ trainer:
   accelerator: cuda
   limit_train_batches: 200  # test (full: 1.0)
   limit_val_batches: 30  # test, per GPU (full: all)
-  profiler: simple  # test only
+  profiler:  # test only: per-rank time report, incl. waiting for data (train_dataloader_next)
+    _target_: pytorch_lightning.profilers.SimpleProfiler
+    dirpath: ${exp.dir}/${exp.name}
+    filename: profile
   fast_dev_run: false
   

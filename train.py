@@ -103,6 +103,10 @@ def train(cfg: DictConfig, ckpt_path: Optional[str] = None) -> Tuple[Dict[str, A
     # ckpt_path resumes a run (weights, optimisers, schedulers, epoch, callbacks).
     trainer.fit(system, datamodule=datamodule, ckpt_path=ckpt_path)
     print_only("Training finished!")
+    # Every DDP rank reaches this point; only rank 0 writes the exports, so several
+    # processes never write the same file at once.
+    if not trainer.is_global_zero:
+        return
     best_k = {k: v.item() for k, v in checkpoint.best_k_models.items()}
     with open(os.path.join(cfg.exp.dir, cfg.exp.name, "best_k_models.json"), "w") as f:
         json.dump(best_k, f, indent=0)

@@ -15,7 +15,7 @@
 # best_model.pth export. A full epoch is 40,000 samples.
 
 exp: 
-  dir: ./Exps
+  dir: ./outputs/exps  # gitignored; upstream: ./Exps
   name: Apollo-smoke
 
 # seed: 614020
