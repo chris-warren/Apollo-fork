@@ -91,6 +91,19 @@ generator outputs differed by 7.7e-7 and gradients by 2.6e-7 (relative). On the
 authors' GPUs (RTX 4090, fp32) torch used the memory-efficient kernel; leave the
 setting at `default` on GPUs where that kernel works.
 
+## Multi-GPU on the cluster's H100 nodes: set APOLLO_DDP_BACKEND=gloo
+
+The NCCL 2.14.3 compiled into torch 2.0.0+cu118 cannot map these nodes' NVLink topology:
+DDP fails at its first collective with `NCCL error ... internal error ... Failed to find
+reverse path from remNode ... to node ...`. `scripts/diagnostics/ddp_check.sbatch` (job
+612332) found no NCCL setting that helps (default, `NCCL_P2P_DISABLE=1`,
+`NCCL_P2P_LEVEL=PHB`, P2P and shared memory off), while gloo worked: correct broadcast and
+all-reduce on 4 H100s, 51.5 ms for a 77 MB (all-parameter) all-reduce. NCCL cannot be
+replaced without changing torch, and with it torchaudio's MP3 path. So multi-GPU runs use
+`APOLLO_DDP_BACKEND=gloo` in `.env` (in `.env.example`). The gradient averaging is the
+same; it goes through host memory instead of NVLink, which adds an estimated 10-20 % to
+each step. Single-GPU runs do not use a backend.
+
 ## Known gap: ViSQOL (final evaluation only)
 
 `look2hear.yml` lists `visqol==3.3.3`, which is not on PyPI; the authors must have

@@ -64,9 +64,10 @@ def main():
     @check(".env and config")
     def _():
         from omegaconf import OmegaConf
-        from dotenv_loader import configure_attention_backend, load_env
+        from dotenv_loader import configure_attention_backend, ddp_backend, load_env
         load_env(verbose=False)
         state["sdpa"] = configure_attention_backend(verbose=False)
+        state["ddp"] = ddp_backend() or "default"
         cfg = OmegaConf.load(args.config)
         OmegaConf.resolve(cfg)
         for key in ("train_dir", "eval_dir"):
@@ -76,7 +77,7 @@ def main():
         assert mode in ("offline", "disabled") or cfg.logger.get("offline"), \
             "wandb would try to go online; set WANDB_MODE=offline in .env"
         return (f"{os.path.basename(args.config)}, data at {os.environ.get('APOLLO_DATA')}, "
-                f"WANDB_MODE={mode}, APOLLO_SDPA_BACKEND={state['sdpa']}")
+                f"WANDB_MODE={mode}, APOLLO_SDPA_BACKEND={state['sdpa']}, APOLLO_DDP_BACKEND={state['ddp']}")
 
     @check("training data, eval sets and leakage")
     def _():

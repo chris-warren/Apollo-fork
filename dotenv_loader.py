@@ -84,3 +84,19 @@ def configure_attention_backend(verbose=True):
     if verbose:
         print(f"Attention backend: {mode}")
     return mode
+
+
+DDP_BACKENDS = ("default", "nccl", "gloo")
+
+
+def ddp_backend():
+    """APOLLO_DDP_BACKEND for Lightning's DDPStrategy, or None for its default (NCCL on GPUs).
+
+    "gloo" is needed on nodes where the NCCL 2.14.3 compiled into torch 2.0.0 cannot map
+    the GPU interconnect ("Failed to find reverse path ..."; see containers/README.md).
+    It averages the same gradients, through host memory instead of NVLink.
+    """
+    mode = os.environ.get("APOLLO_DDP_BACKEND", "default").strip().lower()
+    if mode not in DDP_BACKENDS:
+        raise ValueError(f"APOLLO_DDP_BACKEND must be one of {DDP_BACKENDS}, got {mode!r}")
+    return None if mode == "default" else mode

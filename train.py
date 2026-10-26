@@ -21,7 +21,7 @@ import look2hear.system
 import look2hear.datas
 import look2hear.losses
 from look2hear.utils import RankedLogger, instantiate, print_only
-from dotenv_loader import configure_attention_backend, load_env
+from dotenv_loader import configure_attention_backend, ddp_backend, load_env
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -97,7 +97,8 @@ def train(cfg: DictConfig, ckpt_path: Optional[str] = None) -> Tuple[Dict[str, A
         cfg.trainer,
         callbacks=callbacks,
         logger=logger,
-        strategy=DDPStrategy(find_unused_parameters=True),
+        # APOLLO_DDP_BACKEND (.env) picks the communication backend; unset = Lightning's default.
+        strategy=DDPStrategy(find_unused_parameters=True, process_group_backend=ddp_backend()),
     )
     
     # ckpt_path resumes a run (weights, optimisers, schedulers, epoch, callbacks).

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from dotenv_loader import EnvFileError, configure_attention_backend, load_env, parse_env_file
+from dotenv_loader import EnvFileError, configure_attention_backend, ddp_backend, load_env, parse_env_file
 
 try:
     from omegaconf import OmegaConf
@@ -63,7 +63,7 @@ class LoadTests(unittest.TestCase):
 
     def test_example_file_parses(self):
         values = parse_env_file(os.path.join(REPO, ".env.example"))
-        self.assertEqual(set(values), {"APOLLO_DATA", "WANDB_MODE", "APOLLO_SDPA_BACKEND"})
+        self.assertEqual(set(values), {"APOLLO_DATA", "WANDB_MODE", "APOLLO_SDPA_BACKEND", "APOLLO_DDP_BACKEND"})
 
     @unittest.skipIf(OmegaConf is None, "omegaconf not installed")
     def test_smoke_config_resolves_from_env_file(self):
@@ -105,6 +105,19 @@ class AttentionBackendTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"APOLLO_SDPA_BACKEND": "flash"}):
             with self.assertRaises(ValueError):
                 configure_attention_backend(verbose=False)
+
+
+class DdpBackendTests(unittest.TestCase):
+    def test_values(self):
+        for value, expected in [("gloo", "gloo"), ("nccl", "nccl"), ("default", None), (" GLOO ", "gloo")]:
+            with mock.patch.dict(os.environ, {"APOLLO_DDP_BACKEND": value}):
+                self.assertEqual(ddp_backend(), expected)
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("APOLLO_DDP_BACKEND", None)
+            self.assertIsNone(ddp_backend())
+        with mock.patch.dict(os.environ, {"APOLLO_DDP_BACKEND": "mpi"}):
+            with self.assertRaises(ValueError):
+                ddp_backend()
 
 
 if __name__ == "__main__":
