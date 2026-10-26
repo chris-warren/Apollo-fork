@@ -5,6 +5,12 @@
 # Everything else is configs/apollo.yaml unchanged.
 #
 # Measured (smoke test, 1 H100): 0.277 s/sample at batch 2, 54.6 GB peak memory.
+#
+# num_workers 16 (upstream: 8 per GPU on 8 GPUs). The released codec_simu fixes one
+# random MP3 bitrate per dataloader worker per epoch, so the number of bitrate draws per
+# epoch equals the total worker count: 16 x 4 GPUs = 64, as in the paper's setup. What
+# remains different: a batch comes from one worker, so the 2 samples a GPU takes per step
+# share a bitrate (4 independent draws per step instead of 8).
 # Expected: about 46 min per epoch, about 3.1 GPU-hours per epoch.
 #
 # Launch: bash scripts/submit_train.sh (see containers/README.md). Needs .env with
@@ -32,7 +38,7 @@ datas:
   snr_range: [-10, 10]
   num_samples: 40000
   batch_size: 2  # per GPU; x 4 GPUs = 8 per step (paper: 8 GPUs x 1)
-  num_workers: 8
+  num_workers: 16  # per GPU; x 4 GPUs = 64 workers, as the paper's 8 GPUs x 8 (see note at top)
 
 model:
   _target_: look2hear.models.apollo.Apollo

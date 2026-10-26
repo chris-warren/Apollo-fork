@@ -59,7 +59,10 @@ exposes the GPU.
 `configs/apollo_1node.yaml` = `configs/apollo.yaml` with 4 GPUs x batch 2 = 8 samples per
 optimiser step (the paper: 8 GPUs x batch 1). `training_step` evaluates the GAN losses
 per sample, so this is the paper's step exactly (`tests/test_training_equivalence.py`).
-From the smoke test: about 46 min and 3.1 GPU-hours per epoch.
+Measured in the 4-GPU test: 0.55 s per step, about 47 min and 3.1 GPU-hours per epoch;
+training waited for data 0.4 % of the time. `num_workers: 16` per GPU gives 64 data
+workers in total, as the paper's 8 GPUs x 8: the released `codec_simu` fixes one MP3
+bitrate per worker per epoch, so this keeps the authors' 64 bitrate draws per epoch.
 
 ```bash
 # from the repository root, on a login node

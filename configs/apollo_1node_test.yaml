@@ -27,7 +27,7 @@ datas:
   snr_range: [-10, 10]
   num_samples: 40000
   batch_size: 2  # per GPU; x 4 GPUs = 8 per step (paper: 8 GPUs x 1)
-  num_workers: 8
+  num_workers: 16  # per GPU; as configs/apollo_1node.yaml (see the note there)
 
 model:
   _target_: look2hear.models.apollo.Apollo
