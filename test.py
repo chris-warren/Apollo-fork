@@ -81,35 +81,42 @@ def breakdown(metrics_csv, manifest_csv, out_csv):
                                                   for k in ("sdr", "si-snr", "visqol")])
     print(f"Breakdown by dataset/bitrate/category written to {out_csv}")
 
-def test(cfg: DictConfig, test_h5: str, manifest: str, max_per_bitrate: int = 0) -> None:
+def test(cfg: DictConfig, test_h5: str, manifest: str, max_per_bitrate: int = 0, save_estimates: str = "") -> None:
     data_val = PackedTestSet(test_h5, manifest, max_per_bitrate)
     
     cfg.model.pop("_target_", None)
     model = look2hear.models.Apollo.from_pretrain(os.path.join(cfg.exp.dir, cfg.exp.name, "best_model.pth"), **cfg.model).cuda()
     model.eval()
-    results_dir = os.path.join(cfg.exp.dir, cfg.exp.name, "results/")
+    subset = f"first{max_per_bitrate}_per_bitrate" if max_per_bitrate else "full"
+    results_dir = os.path.join(cfg.exp.dir, cfg.exp.name, "results", subset) + "/"
     os.makedirs(results_dir, exist_ok=True)
     metrics = MetricsTracker(save_file=results_dir+"metrics.csv")
     length = len(data_val)
-    # All estimates go into one file rather than one WAV per clip (file-count limit on DRAC).
-    with h5py.File(results_dir+"test_estimates.hdf5", "w") as est_file:
+    # Estimates are only written on request (--save-estimates): for the full test set they
+    # are ~127 GB, so point it at scratch. One file rather than one WAV per clip.
+    est_file = ests_ds = None
+    if save_estimates:
         clip_shape = data_val.h5["ori"].shape[1:]
+        est_file = h5py.File(save_estimates, "w")
         ests_ds = est_file.create_dataset("ests", (len(data_val),) + clip_shape, "float32", chunks=(1,) + clip_shape)
         est_file.create_dataset("clip_id", data=np.array(data_val.clip_ids, dtype=h5py.string_dtype()))
-        for idx in range(len(data_val)):
-            ori_wav, codec_wav, key = data_val[idx]
-            
-            ori_wav = ori_wav.cuda()
-            codec_wav = codec_wav.unsqueeze(0).cuda()
-            with torch.no_grad():
-                ests = model(codec_wav)
+    for idx in range(len(data_val)):
+        ori_wav, codec_wav, key = data_val[idx]
+
+        ori_wav = ori_wav.cuda()
+        codec_wav = codec_wav.unsqueeze(0).cuda()
+        with torch.no_grad():
+            ests = model(codec_wav)
+            if ests_ds is not None:
                 ests_ds[idx] = ests.squeeze(0).cpu().numpy()
-                metrics(ori_wav, ests, key)
-                
-            if idx % 10 == 0:
-                dicts = metrics.update()
-                print(f"Processed {idx}/{length} samples: SDR: {dicts['sdr']}, SI-SNR: {dicts['si-snr']}, VISQOL: {dicts['visqol']}")
-    
+            metrics(ori_wav, ests, key)
+
+        if idx % 100 == 0:
+            dicts = metrics.update()
+            print(f"Processed {idx}/{length} samples: SDR: {dicts['sdr']}, SI-SNR: {dicts['si-snr']}, VISQOL: {dicts['visqol']}")
+    if est_file is not None:
+        est_file.close()
+
     metrics.final()       
     breakdown(results_dir+"metrics.csv", manifest, results_dir+"metrics_breakdown.csv")
     print("Finished testing")
@@ -126,6 +133,8 @@ if __name__ == "__main__":
     parser.add_argument("--manifest", help="test manifest CSV (default: test_manifest.csv next to --test_h5)")
     parser.add_argument("--max-per-bitrate", type=int, default=0,
                         help="quick run: only the first N clips per dataset and bitrate (0 = all)")
+    parser.add_argument("--save-estimates", default="",
+                        help="also write the model's estimates to this HDF5 file (~127 GB for the full test set: use scratch)")
     
     args = parser.parse_args()
     # Same machine settings as train.py (APOLLO_SDPA_BACKEND must match the training run).
@@ -137,5 +146,5 @@ if __name__ == "__main__":
     OmegaConf.save(cfg, os.path.join(cfg.exp.dir, cfg.exp.name, "config.yaml"))
     
     test(cfg, args.test_h5, args.manifest or os.path.join(os.path.dirname(args.test_h5), "test_manifest.csv"),
-         args.max_per_bitrate)
+         args.max_per_bitrate, args.save_estimates)
     

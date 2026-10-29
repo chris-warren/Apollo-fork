@@ -22,5 +22,5 @@ jobs:
           python -m pip install numpy==1.26.4 huggingface-hub==1.27.0 soundfile==0.14.0 h5py
       - name: Compile and run unit tests
         run: |
-          python -m py_compile inference.py dotenv_loader.py scripts/preflight.py scripts/diagnostics/ddp_check.py tests/test_inference.py tests/test_data_prep.py tests/test_dotenv_loader.py tests/test_training_equivalence.py data_prep/*.py
+          python -m py_compile inference.py dotenv_loader.py scripts/preflight.py scripts/diagnostics/ddp_check.py test.py look2hear/metrics/wrapper.py tests/test_inference.py tests/test_data_prep.py tests/test_dotenv_loader.py tests/test_training_equivalence.py data_prep/*.py
           python -m unittest discover -s tests -v

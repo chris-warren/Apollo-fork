@@ -13,9 +13,12 @@ import os
 import librosa
 from torch_mir_eval.separation import bss_eval_sources
 import fast_bss_eval
-from visqol import visqol_lib_py
-from visqol.pb2 import visqol_config_pb2
-from visqol.pb2 import similarity_result_pb2
+try:  # ViSQOL (visqol==3.3.3 in look2hear.yml) is not on PyPI; without it the column is NaN
+    from visqol import visqol_lib_py
+    from visqol.pb2 import visqol_config_pb2
+    from visqol.pb2 import similarity_result_pb2
+except ImportError:
+    visqol_lib_py = None
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +32,17 @@ class MetricsTracker:
         self.all_visqols = []
         
         csv_columns = ["snt_id", "sdr", "si-snr", "visqol"]
-        self.visqol_config = visqol_config_pb2.VisqolConfig()
-        self.visqol_config.audio.sample_rate = 48000
-        self.visqol_config.options.use_speech_scoring = False
-        svr_model_path = "libsvm_nu_svr_model.txt"
-        self.visqol_config.options.svr_model_path = os.path.join(os.path.dirname(visqol_lib_py.__file__), "model", svr_model_path)
-        self.visqol_api = visqol_lib_py.VisqolApi()
-        self.visqol_api.Create(self.visqol_config)
+        self.visqol_api = None
+        if visqol_lib_py is None:
+            print("ViSQOL not installed: SDR and SI-SNR only; the visqol column will be NaN")
+        else:
+            self.visqol_config = visqol_config_pb2.VisqolConfig()
+            self.visqol_config.audio.sample_rate = 48000
+            self.visqol_config.options.use_speech_scoring = False
+            svr_model_path = "libsvm_nu_svr_model.txt"
+            self.visqol_config.options.svr_model_path = os.path.join(os.path.dirname(visqol_lib_py.__file__), "model", svr_model_path)
+            self.visqol_api = visqol_lib_py.VisqolApi()
+            self.visqol_api.Create(self.visqol_config)
         
         self.results_csv = open(save_file, "w")
         self.writer = csv.DictWriter(self.results_csv, fieldnames=csv_columns)
@@ -45,10 +52,11 @@ class MetricsTracker:
         sisnr = fast_bss_eval.si_sdr(clean.unsqueeze(0), estimate.unsqueeze(0), zero_mean=True).mean()
         sdr = fast_bss_eval.sdr(clean.unsqueeze(0), estimate.unsqueeze(0), zero_mean=True).mean()
         
-        clean = librosa.resample(clean.squeeze(0).mean(0).cpu().numpy(), orig_sr=44100, target_sr=48000).astype(np.float64)
-        estimate = librosa.resample(estimate.squeeze(0).mean(0).cpu().numpy(), orig_sr=44100, target_sr=48000).astype(np.float64)
-        
-        visqol = self.visqol_api.Measure(clean, estimate).moslqo
+        visqol = float("nan")
+        if self.visqol_api is not None:
+            clean = librosa.resample(clean.squeeze(0).mean(0).cpu().numpy(), orig_sr=44100, target_sr=48000).astype(np.float64)
+            estimate = librosa.resample(estimate.squeeze(0).mean(0).cpu().numpy(), orig_sr=44100, target_sr=48000).astype(np.float64)
+            visqol = self.visqol_api.Measure(clean, estimate).moslqo
         # import pdb; pdb.set_trace()
         row = {
             "snt_id": key,
